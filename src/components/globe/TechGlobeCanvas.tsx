@@ -3,15 +3,14 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import {
   GlobeCategoryId,
-  GlobeConnectionArc,
+  GlobeConnectionEdge,
   GlobeSkillNode,
   computeNodeDepthMetrics,
   computeTargetRotationForNode,
 } from '../../utils/techGlobeLogic';
 import {
-  createPlanetSurfaceTextures,
   createRadialGlowTexture,
-  createSkillBadgeTexture,
+  createSkillHologramTexture,
 } from './techGlobeTextures';
 
 export interface HoveredSkillPayload {
@@ -22,7 +21,7 @@ export interface HoveredSkillPayload {
 
 interface TechGlobeCanvasProps {
   nodes: GlobeSkillNode[];
-  arcs: GlobeConnectionArc[];
+  edges: GlobeConnectionEdge[];
   activeCategory: GlobeCategoryId;
   selectedSkillId: string | null;
   autoRotate: boolean;
@@ -36,34 +35,34 @@ interface TechGlobeCanvasProps {
 
 interface SkillRuntimeNode {
   data: GlobeSkillNode;
-  anchorGroup: THREE.Group;
-  socketMesh: THREE.Mesh;
-  socketMaterial: THREE.MeshBasicMaterial;
-  stemMesh: THREE.Mesh;
-  stemMaterial: THREE.MeshStandardMaterial;
-  junctionMesh: THREE.Mesh;
-  junctionMaterial: THREE.MeshBasicMaterial;
-  badgeSprite: THREE.Sprite;
-  badgeMaterial: THREE.SpriteMaterial;
+  vertexGroup: THREE.Group;
+  crystalMesh: THREE.Mesh;
+  crystalMaterial: THREE.MeshStandardMaterial;
+  ringMesh: THREE.Mesh;
+  ringMaterial: THREE.MeshBasicMaterial;
+  flareSprite: THREE.Sprite;
+  flareMaterial: THREE.SpriteMaterial;
+  labelSprite: THREE.Sprite;
+  labelMaterial: THREE.SpriteMaterial;
   hitProxy: THREE.Mesh;
   unitNormalLocal: THREE.Vector3;
   currentScale: number;
 }
 
-interface ArcRuntime {
-  data: GlobeConnectionArc;
+interface EdgeRuntime {
+  data: GlobeConnectionEdge;
+  midUnitLocal: THREE.Vector3;
   line: THREE.Line;
   material: THREE.LineBasicMaterial;
 }
 
-// Pre-allocated scratch math helpers (zero GC inside animation loop)
+// Pre-allocated scratch helpers (zero GC inside render loop)
 const _vecA = new THREE.Vector3();
 const _worldNormal = new THREE.Vector3();
 const _toCamera = new THREE.Vector3();
 const _nodeWorldPos = new THREE.Vector3();
 const _globeWorldQuat = new THREE.Quaternion();
 const _zAxis = new THREE.Vector3(0, 0, 1);
-const _yAxis = new THREE.Vector3(0, 1, 0);
 const _pointerNdc = new THREE.Vector2();
 const _raycaster = new THREE.Raycaster();
 
@@ -71,8 +70,7 @@ function detectSoftwareWebGL(): { supported: boolean; isSoftwareGl: boolean } {
   try {
     const probeCanvas = document.createElement('canvas');
     const gl =
-      probeCanvas.getContext('webgl2') ||
-      probeCanvas.getContext('webgl');
+      probeCanvas.getContext('webgl2') || probeCanvas.getContext('webgl');
     if (!gl) {
       return { supported: false, isSoftwareGl: true };
     }
@@ -88,61 +86,59 @@ function detectSoftwareWebGL(): { supported: boolean; isSoftwareGl: boolean } {
   }
 }
 
-function buildLatLonGridGeometry(radius: number): THREE.BufferGeometry {
-  const vertices: number[] = [];
+/**
+ * Generates ultra-fine dashed meridian and equatorial reference circles
+ * floating in the hollow lattice to accentuate the spherical silhouette
+ * without creating any solid surface.
+ */
+function buildHollowOrbitalGuideGeometry(radius: number): THREE.BufferGeometry {
+  const pts: number[] = [];
+  const segments = 96;
 
-  // Parallels (latitude rings)
-  const latBands = [-60, -30, 0, 30, 60];
-  const lonSteps = 72;
-  for (const deg of latBands) {
-    const lat = THREE.MathUtils.degToRad(deg);
-    const y = Math.sin(lat) * radius;
-    const ringR = Math.cos(lat) * radius;
-    for (let i = 0; i < lonSteps; i += 1) {
-      const a0 = (i / lonSteps) * Math.PI * 2;
-      const a1 = ((i + 1) / lonSteps) * Math.PI * 2;
-      vertices.push(
-        Math.cos(a0) * ringR,
-        y,
-        Math.sin(a0) * ringR,
-        Math.cos(a1) * ringR,
-        y,
-        Math.sin(a1) * ringR
-      );
-    }
-  }
+  // 3 orthogonal delicate great circles (equator + 2 prime meridians)
+  for (let i = 0; i < segments; i += 2) {
+    const a0 = (i / segments) * Math.PI * 2;
+    const a1 = ((i + 1) / segments) * Math.PI * 2;
 
-  // Meridians (longitude arcs)
-  const meridianCount = 12;
-  const latSteps = 48;
-  for (let m = 0; m < meridianCount; m += 1) {
-    const lon = (m / meridianCount) * Math.PI * 2;
-    const cosL = Math.cos(lon);
-    const sinL = Math.sin(lon);
-    for (let j = 0; j < latSteps; j += 1) {
-      const p0 = -Math.PI * 0.46 + (j / latSteps) * Math.PI * 0.92;
-      const p1 = -Math.PI * 0.46 + ((j + 1) / latSteps) * Math.PI * 0.92;
-      const r0 = Math.cos(p0) * radius;
-      const r1 = Math.cos(p1) * radius;
-      vertices.push(
-        cosL * r0,
-        Math.sin(p0) * radius,
-        sinL * r0,
-        cosL * r1,
-        Math.sin(p1) * radius,
-        sinL * r1
-      );
-    }
+    // Equatorial dotted ring
+    pts.push(
+      Math.cos(a0) * radius,
+      0,
+      Math.sin(a0) * radius,
+      Math.cos(a1) * radius,
+      0,
+      Math.sin(a1) * radius
+    );
+
+    // Prime meridian 1
+    pts.push(
+      Math.cos(a0) * radius,
+      Math.sin(a0) * radius,
+      0,
+      Math.cos(a1) * radius,
+      Math.sin(a1) * radius,
+      0
+    );
+
+    // Prime meridian 2
+    pts.push(
+      0,
+      Math.sin(a0) * radius,
+      Math.cos(a0) * radius,
+      0,
+      Math.sin(a1) * radius,
+      Math.cos(a1) * radius
+    );
   }
 
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
   return geo;
 }
 
 export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
   nodes,
-  arcs,
+  edges,
   activeCategory,
   selectedSkillId,
   autoRotate,
@@ -155,7 +151,7 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // Sync live props into refs so WebGLRenderer mounts exactly once
+  // Sync live props into refs so WebGLRenderer mounts once and never resets
   const activeCategoryRef = useRef(activeCategory);
   const selectedSkillIdRef = useRef(selectedSkillId);
   const autoRotateRef = useRef(autoRotate);
@@ -177,7 +173,6 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
   onDraggingChangeRef.current = onDraggingChange;
   onWebGLUnavailableRef.current = onWebGLUnavailable;
 
-  // Trigger focus or on-demand render when category/selection changes
   useEffect(() => {
     focusNodeRef.current?.(selectedSkillId);
     requestExternalRenderRef.current?.();
@@ -217,7 +212,7 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
 
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.12;
+    renderer.toneMappingExposure = 1.15;
     renderer.setPixelRatio(
       isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 2)
     );
@@ -228,7 +223,7 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
     renderer.domElement.style.touchAction = 'pan-y';
     renderer.domElement.setAttribute(
       'aria-label',
-      'Interactive 3D Technology Globe'
+      'Interactive 3D Technology Skill Sphere'
     );
     mountEl.appendChild(renderer.domElement);
 
@@ -236,17 +231,17 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
     const height = Math.max(mountEl.clientHeight, 420);
     renderer.setSize(width, height, false);
 
-    // Scene, camera & fog
+    // Scene, camera & deep-space depth fog
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x060b18, 0.028);
+    scene.fog = new THREE.FogExp2(0x040814, 0.032);
 
     const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 60);
     const getResponsiveCameraZ = (w: number) =>
-      w < 520 ? 10.6 : w < 900 ? 8.95 : 8.15;
-    camera.position.set(0, 0.12, getResponsiveCameraZ(width));
-    camera.lookAt(0, 0.08, 0);
+      w < 520 ? 11.2 : w < 900 ? 9.4 : 8.55;
+    camera.position.set(0, 0.14, getResponsiveCameraZ(width));
+    camera.lookAt(0, 0.12, 0);
 
-    // Studio PBR environment reflection map on every device
+    // Procedural Studio PBR Environment Map on every device
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     const roomEnv = new RoomEnvironment();
     const envRT = pmremGenerator.fromScene(roomEnv, 0.04);
@@ -254,223 +249,150 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
     roomEnv.dispose();
     pmremGenerator.dispose();
 
-    // Balanced warm/cool 3-point lighting rig
-    const hemiLight = new THREE.HemisphereLight(0x93c5fd, 0x0b132b, 0.92);
+    // Subtle futuristic blue, cyan, and violet studio lighting rig
+    const hemiLight = new THREE.HemisphereLight(0x7dd3fc, 0x1e1b4b, 1.0);
     scene.add(hemiLight);
 
-    const keyLight = new THREE.DirectionalLight(0xfff7ed, 1.55);
-    keyLight.position.set(7.5, 5.2, 4.2);
-    scene.add(keyLight);
+    const cyanKey = new THREE.DirectionalLight(0xbae6fd, 1.7);
+    cyanKey.position.set(6.0, 4.5, 5.5);
+    scene.add(cyanKey);
 
-    const rimLight = new THREE.DirectionalLight(0x38bdf8, 1.45);
-    rimLight.position.set(-6.0, 2.5, -5.0);
-    scene.add(rimLight);
+    const violetRim = new THREE.DirectionalLight(0x8b5cf6, 1.45);
+    violetRim.position.set(-6.0, 2.0, -4.5);
+    scene.add(violetRim);
 
-    const bottomFill = new THREE.DirectionalLight(0x6366f1, 0.52);
-    bottomFill.position.set(0, -5.0, 2.0);
-    scene.add(bottomFill);
+    const blueUnder = new THREE.DirectionalLight(0x3b82f6, 0.75);
+    blueUnder.position.set(0, -5.5, 3.0);
+    scene.add(blueUnder);
 
-    // Resource trackers for spotless disposal
+    // Disposal trackers
     const geometriesToDispose: THREE.BufferGeometry[] = [];
     const materialsToDispose: THREE.Material[] = [];
     const texturesToDispose: THREE.Texture[] = [];
 
     const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
-    const GLOBE_RADIUS = 2.25;
-    const GLOBE_CENTER_Y = 0.24;
+    const SPHERE_RADIUS = 2.42;
+    const SPHERE_CENTER_Y = 0.22;
 
-    // Master rotating planetary assembly lifted cleanly above bottom dock
-    const globeGroup = new THREE.Group();
-    globeGroup.position.set(0, GLOBE_CENTER_Y, 0);
-    globeGroup.rotation.set(0.18, -0.45, 0);
-    scene.add(globeGroup);
+    // Master rotating hollow skill-sphere group (NO solid planet sphere underneath!)
+    const skillSphereGroup = new THREE.Group();
+    skillSphereGroup.position.set(0, SPHERE_CENTER_Y, 0);
+    skillSphereGroup.rotation.set(0.16, -0.35, 0);
+    scene.add(skillSphereGroup);
 
-    // 1. Primary textured planetary sphere
-    const { albedoMap, bumpMap } = createPlanetSurfaceTextures(maxAnisotropy);
-    texturesToDispose.push(albedoMap, bumpMap);
-
-    const coreGeo = new THREE.SphereGeometry(GLOBE_RADIUS, 48, 36);
-    const coreMat = new THREE.MeshPhysicalMaterial({
-      map: albedoMap,
-      bumpMap,
-      bumpScale: 0.032,
-      color: 0xffffff,
-      roughness: 0.56,
-      metalness: 0.3,
-      clearcoat: 0.14,
-      clearcoatRoughness: 0.42,
-      emissive: new THREE.Color(0x0a1733),
-      emissiveIntensity: 0.58,
-    });
-    geometriesToDispose.push(coreGeo);
-    materialsToDispose.push(coreMat);
-    const coreMesh = new THREE.Mesh(coreGeo, coreMat);
-    globeGroup.add(coreMesh);
-
-    // 2. Precision latitude/longitude graticule wireframe
-    const latLonGeo = buildLatLonGridGeometry(GLOBE_RADIUS + 0.018);
-    const latLonMat = new THREE.LineBasicMaterial({
-      color: 0x60a5fa,
+    // 1. Ethereal hollow inner volumetric light aura (soft light haze, not a solid core)
+    const coreAuraTex = createRadialGlowTexture(
+      'rgba(56, 189, 248, 0.24)',
+      'rgba(99, 102, 241, 0.14)',
+      'rgba(4, 8, 20, 0)'
+    );
+    texturesToDispose.push(coreAuraTex);
+    const coreAuraMat = new THREE.SpriteMaterial({
+      map: coreAuraTex,
       transparent: true,
-      opacity: 0.22,
-    });
-    geometriesToDispose.push(latLonGeo);
-    materialsToDispose.push(latLonMat);
-    globeGroup.add(new THREE.LineSegments(latLonGeo, latLonMat));
-
-    // 3. Elevated geodesic icosahedral tech wireframe shell
-    const icoBase = new THREE.IcosahedronGeometry(GLOBE_RADIUS + 0.045, 2);
-    const icoEdgesGeo = new THREE.EdgesGeometry(icoBase);
-    icoBase.dispose();
-    const icoMat = new THREE.LineBasicMaterial({
-      color: 0x38bdf8,
-      transparent: true,
-      opacity: 0.11,
-    });
-    geometriesToDispose.push(icoEdgesGeo);
-    materialsToDispose.push(icoMat);
-    globeGroup.add(new THREE.LineSegments(icoEdgesGeo, icoMat));
-
-    // 4. Composite brushed metallic north & south polar axis hubs
-    const polarCapGeo = new THREE.CylinderGeometry(0.32, 0.42, 0.09, 28);
-    const polarRingGeo = new THREE.TorusGeometry(0.46, 0.018, 12, 36);
-    const metallicTrimMat = new THREE.MeshStandardMaterial({
-      color: 0x94a3b8,
-      metalness: 0.88,
-      roughness: 0.2,
-    });
-    geometriesToDispose.push(polarCapGeo, polarRingGeo);
-    materialsToDispose.push(metallicTrimMat);
-
-    for (const sign of [1, -1]) {
-      const cap = new THREE.Mesh(polarCapGeo, metallicTrimMat);
-      cap.position.set(0, sign * (GLOBE_RADIUS - 0.01), 0);
-      globeGroup.add(cap);
-
-      const ring = new THREE.Mesh(polarRingGeo, metallicTrimMat);
-      ring.rotation.x = Math.PI / 2;
-      ring.position.set(0, sign * (GLOBE_RADIUS + 0.03), 0);
-      globeGroup.add(ring);
-    }
-
-    // 5. Tilted orbital rings + instanced micro-satellites (outer planetary frame)
-    const orbitalRigGroup = new THREE.Group();
-    orbitalRigGroup.position.set(0, GLOBE_CENTER_Y, 0);
-    scene.add(orbitalRigGroup);
-
-    const outerRingGeo = new THREE.TorusGeometry(3.05, 0.014, 12, 96);
-    const outerRingMat = new THREE.MeshStandardMaterial({
-      color: 0x38bdf8,
-      metalness: 0.82,
-      roughness: 0.24,
-      transparent: true,
-      opacity: 0.42,
-    });
-    geometriesToDispose.push(outerRingGeo);
-    materialsToDispose.push(outerRingMat);
-    const outerRingMesh = new THREE.Mesh(outerRingGeo, outerRingMat);
-    outerRingMesh.rotation.set(Math.PI / 2.25, 0.24, 0.14);
-    orbitalRigGroup.add(outerRingMesh);
-
-    const secondaryRingGeo = new THREE.TorusGeometry(3.38, 0.008, 10, 96);
-    const secondaryRingMat = new THREE.MeshStandardMaterial({
-      color: 0x818cf8,
-      metalness: 0.78,
-      roughness: 0.28,
-      transparent: true,
-      opacity: 0.26,
-    });
-    geometriesToDispose.push(secondaryRingGeo);
-    materialsToDispose.push(secondaryRingMat);
-    const secondaryRingMesh = new THREE.Mesh(secondaryRingGeo, secondaryRingMat);
-    secondaryRingMesh.rotation.set(Math.PI / 1.75, -0.42, -0.2);
-    orbitalRigGroup.add(secondaryRingMesh);
-
-    // Instanced orbital telemetry beads along outer ring
-    const beadCount = 24;
-    const beadGeo = new THREE.OctahedronGeometry(0.032, 0);
-    const beadMat = new THREE.MeshStandardMaterial({
-      color: 0x7dd3fc,
-      emissive: 0x38bdf8,
-      emissiveIntensity: 0.8,
-      metalness: 0.5,
-      roughness: 0.25,
-    });
-    geometriesToDispose.push(beadGeo);
-    materialsToDispose.push(beadMat);
-    const beadInstances = new THREE.InstancedMesh(beadGeo, beadMat, beadCount);
-    const beadDummy = new THREE.Object3D();
-    for (let i = 0; i < beadCount; i += 1) {
-      const ang = (i / beadCount) * Math.PI * 2;
-      beadDummy.position.set(Math.cos(ang) * 3.05, Math.sin(ang) * 3.05, 0);
-      const s = i % 3 === 0 ? 1.25 : 0.75;
-      beadDummy.scale.setScalar(s);
-      beadDummy.updateMatrix();
-      beadInstances.setMatrixAt(i, beadDummy.matrix);
-    }
-    beadInstances.instanceMatrix.needsUpdate = true;
-    beadInstances.computeBoundingSphere();
-    outerRingMesh.add(beadInstances);
-
-    // 6. Soft velvety atmospheric corona (tapers smoothly to 0.0 at outer silhouette)
-    const atmoGeo = new THREE.SphereGeometry(GLOBE_RADIUS * 1.19, 40, 32);
-    const atmoMat = new THREE.ShaderMaterial({
-      transparent: true,
+      opacity: 0.75,
       depthWrite: false,
-      side: THREE.BackSide,
       blending: THREE.AdditiveBlending,
-      uniforms: {
-        uColor: { value: new THREE.Color(0x3b82f6) },
-      },
-      vertexShader: `
-        varying vec3 vNormal;
-        varying vec3 vViewDir;
-        void main() {
-          vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-          vNormal = normalize(normalMatrix * normal);
-          vViewDir = normalize(-mvPos.xyz);
-          gl_Position = projectionMatrix * mvPos;
-        }
-      `,
-      fragmentShader: `
-        uniform vec3 uColor;
-        varying vec3 vNormal;
-        varying vec3 vViewDir;
-        void main() {
-          float depthFactor = clamp(-dot(vNormal, vViewDir), 0.0, 1.0);
-          float intensity = pow(depthFactor, 3.6) * 0.72;
-          gl_FragColor = vec4(uColor, intensity);
-        }
-      `,
     });
-    geometriesToDispose.push(atmoGeo);
-    materialsToDispose.push(atmoMat);
-    const atmoMesh = new THREE.Mesh(atmoGeo, atmoMat);
-    atmoMesh.position.set(0, GLOBE_CENTER_Y, 0);
-    scene.add(atmoMesh);
+    materialsToDispose.push(coreAuraMat);
+    const coreAuraSprite = new THREE.Sprite(coreAuraMat);
+    coreAuraSprite.position.set(0, SPHERE_CENTER_Y, 0);
+    coreAuraSprite.scale.set(5.4, 5.4, 1);
+    coreAuraSprite.renderOrder = -5;
+    scene.add(coreAuraSprite);
 
-    // 7. Ambient deep-space starfield particles
-    const starCount = 260;
+    // 2. Spherical shell geometric micro-particles (380 faceted crystal nodes tracing the exact spherical silhouette)
+    const shellParticleCount = 380;
+    const shellParticleGeo = new THREE.OctahedronGeometry(0.022, 0);
+    const shellParticleMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      emissive: 0x3b82f6,
+      emissiveIntensity: 0.65,
+      metalness: 0.75,
+      roughness: 0.22,
+      transparent: true,
+      opacity: 0.78,
+    });
+    geometriesToDispose.push(shellParticleGeo);
+    materialsToDispose.push(shellParticleMat);
+
+    const shellParticles = new THREE.InstancedMesh(
+      shellParticleGeo,
+      shellParticleMat,
+      shellParticleCount
+    );
+    const pDummy = new THREE.Object3D();
+    const shellPalette = [
+      new THREE.Color(0x38bdf8), // cyan
+      new THREE.Color(0x60a5fa), // electric blue
+      new THREE.Color(0x818cf8), // indigo-blue
+      new THREE.Color(0xa78bfa), // violet
+    ];
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+    for (let i = 0; i < shellParticleCount; i += 1) {
+      const y = 1 - ((i + 0.5) / shellParticleCount) * 2;
+      const ringR = Math.sqrt(Math.max(0, 1 - y * y));
+      const theta = goldenAngle * i;
+      const rJitter = SPHERE_RADIUS - 0.04 + ((i * 19) % 10) * 0.008;
+      pDummy.position.set(
+        Math.cos(theta) * ringR * rJitter,
+        y * rJitter,
+        Math.sin(theta) * ringR * rJitter
+      );
+      pDummy.rotation.set(i * 0.37, i * 0.51, i * 0.23);
+      const scale = i % 7 === 0 ? 1.35 : 0.75 + ((i * 13) % 10) * 0.045;
+      pDummy.scale.setScalar(scale);
+      pDummy.updateMatrix();
+      shellParticles.setMatrixAt(i, pDummy.matrix);
+      shellParticles.setColorAt(i, shellPalette[i % shellPalette.length]);
+    }
+    shellParticles.instanceMatrix.needsUpdate = true;
+    if (shellParticles.instanceColor) {
+      shellParticles.instanceColor.needsUpdate = true;
+    }
+    shellParticles.computeBoundingSphere();
+    skillSphereGroup.add(shellParticles);
+
+    // 3. Delicate dashed orbital reference rings (whisper-thin spherical contour accents)
+    const guideGeo = buildHollowOrbitalGuideGeometry(SPHERE_RADIUS + 0.02);
+    const guideMat = new THREE.LineBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.14,
+    });
+    geometriesToDispose.push(guideGeo);
+    materialsToDispose.push(guideMat);
+    skillSphereGroup.add(new THREE.LineSegments(guideGeo, guideMat));
+
+    // 4. Outer tilted energy orbit ring (ultra-delicate framing accent)
+    const haloRingGeo = new THREE.TorusGeometry(SPHERE_RADIUS + 0.58, 0.006, 8, 96);
+    const haloRingMat = new THREE.MeshBasicMaterial({
+      color: 0x6366f1,
+      transparent: true,
+      opacity: 0.24,
+    });
+    geometriesToDispose.push(haloRingGeo);
+    materialsToDispose.push(haloRingMat);
+    const haloRingMesh = new THREE.Mesh(haloRingGeo, haloRingMat);
+    haloRingMesh.position.set(0, SPHERE_CENTER_Y, 0);
+    haloRingMesh.rotation.set(Math.PI / 2.25, 0.3, 0.15);
+    scene.add(haloRingMesh);
+
+    // 5. Ambient deep-space starlight particles surrounding the sphere
+    const starCount = 240;
     const starPositions = new Float32Array(starCount * 3);
     const starColors = new Float32Array(starCount * 3);
-    const palette = [
-      new THREE.Color(0xe2e8f0),
-      new THREE.Color(0x93c5fd),
-      new THREE.Color(0xa5b4fc),
-      new THREE.Color(0x67e8f9),
-    ];
     for (let i = 0; i < starCount; i += 1) {
-      // Deterministic golden distribution across outer celestial shell
       const u = (i + 0.5) / starCount;
-      const theta = i * 2.399963229728653;
+      const theta = i * goldenAngle;
       const y = 1 - 2 * u;
       const rPlane = Math.sqrt(Math.max(0, 1 - y * y));
-      const shellR = 6.8 + ((i * 37) % 100) * 0.065;
+      const shellR = 6.2 + ((i * 41) % 100) * 0.065;
       starPositions[i * 3] = Math.cos(theta) * rPlane * shellR;
       starPositions[i * 3 + 1] = y * shellR;
       starPositions[i * 3 + 2] = Math.sin(theta) * rPlane * shellR;
 
-      const c = palette[i % palette.length];
+      const c = shellPalette[i % shellPalette.length];
       starColors[i * 3] = c.r;
       starColors[i * 3 + 1] = c.g;
       starColors[i * 3 + 2] = c.b;
@@ -478,15 +400,16 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
     const starGeo = new THREE.BufferGeometry();
     starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
     starGeo.setAttribute('color', new THREE.BufferAttribute(starColors, 3));
-    const glowTex = createRadialGlowTexture();
-    texturesToDispose.push(glowTex);
+
+    const nodeFlareTex = createRadialGlowTexture();
+    texturesToDispose.push(nodeFlareTex);
 
     const starMat = new THREE.PointsMaterial({
-      size: 0.14,
-      map: glowTex,
+      size: 0.12,
+      map: nodeFlareTex,
       vertexColors: true,
       transparent: true,
-      opacity: 0.72,
+      opacity: 0.55,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
@@ -495,53 +418,53 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
     const starField = new THREE.Points(starGeo, starMat);
     scene.add(starField);
 
-    // 8. Category constellation arcs curved gently over the planet surface
+    // 6. Interconnected Geodesic Skill Web (curved glowing filaments directly linking the 32 technologies)
     const nodeLookup = new Map(nodes.map((n) => [n.id, n]));
-    const arcRuntimes: ArcRuntime[] = [];
+    const edgeRuntimes: EdgeRuntime[] = [];
 
-    for (const arc of arcs) {
-      const fromNode = nodeLookup.get(arc.fromId);
-      const toNode = nodeLookup.get(arc.toId);
+    for (const edge of edges) {
+      const fromNode = nodeLookup.get(edge.fromId);
+      const toNode = nodeLookup.get(edge.toId);
       if (!fromNode || !toNode) continue;
 
-      const pStart = new THREE.Vector3(...fromNode.surfacePos).multiplyScalar(1.015);
-      const pEnd = new THREE.Vector3(...toNode.surfacePos).multiplyScalar(1.015);
-      const chordDist = pStart.distanceTo(pEnd);
-      const mid = pStart
-        .clone()
-        .add(pEnd)
-        .multiplyScalar(0.5)
-        .normalize()
-        .multiplyScalar(GLOBE_RADIUS + 0.14 + chordDist * 0.12);
+      const pStart = new THREE.Vector3(...fromNode.surfacePos);
+      const pEnd = new THREE.Vector3(...toNode.surfacePos);
+      const midUnit = pStart.clone().add(pEnd).normalize();
+      // Gently hug the exact spherical surface curvature so filaments sculpt the globe silhouette
+      const pMid = midUnit.clone().multiplyScalar(SPHERE_RADIUS * 1.03);
 
-      const curve = new THREE.QuadraticBezierCurve3(pStart, mid, pEnd);
-      const curvePoints = curve.getPoints(24);
-      const arcGeo = new THREE.BufferGeometry().setFromPoints(curvePoints);
-      const arcMat = new THREE.LineBasicMaterial({
-        color: new THREE.Color(arc.accentHex),
+      const curve = new THREE.QuadraticBezierCurve3(pStart, pMid, pEnd);
+      const curvePts = curve.getPoints(16);
+      const edgeGeo = new THREE.BufferGeometry().setFromPoints(curvePts);
+      const edgeMat = new THREE.LineBasicMaterial({
+        color: new THREE.Color(edge.accentHex),
         transparent: true,
-        opacity: 0.24,
+        opacity: edge.kind === 'discipline' ? 0.34 : 0.22,
+        depthWrite: false,
       });
-      geometriesToDispose.push(arcGeo);
-      materialsToDispose.push(arcMat);
+      geometriesToDispose.push(edgeGeo);
+      materialsToDispose.push(edgeMat);
 
-      const line = new THREE.Line(arcGeo, arcMat);
-      globeGroup.add(line);
-      arcRuntimes.push({ data: arc, line, material: arcMat });
+      const line = new THREE.Line(edgeGeo, edgeMat);
+      skillSphereGroup.add(line);
+      edgeRuntimes.push({
+        data: edge,
+        midUnitLocal: midUnit,
+        line,
+        material: edgeMat,
+      });
     }
 
-    // 9. 32 Skill Nodes physically anchored to the spherical surface
-    const sharedSocketGeo = new THREE.RingGeometry(0.055, 0.088, 24);
-    const sharedStemGeo = new THREE.CylinderGeometry(0.011, 0.016, 0.22, 8);
-    const sharedJunctionGeo = new THREE.SphereGeometry(0.042, 12, 12);
-    const sharedHitGeo = new THREE.SphereGeometry(0.28, 10, 10);
-    const sharedHitMat = new THREE.MeshBasicMaterial({
-      visible: false,
-    });
+    // 7. 32 Skill Nodes (Composite crystal vertex + tangent halo ring + radial flare + floating borderless logo & name)
+    const primaryCrystalGeo = new THREE.OctahedronGeometry(0.062, 0);
+    const supportingCrystalGeo = new THREE.OctahedronGeometry(0.044, 0);
+    const sharedRingGeo = new THREE.RingGeometry(0.088, 0.112, 24);
+    const sharedHitGeo = new THREE.SphereGeometry(0.32, 10, 10);
+    const sharedHitMat = new THREE.MeshBasicMaterial({ visible: false });
     geometriesToDispose.push(
-      sharedSocketGeo,
-      sharedStemGeo,
-      sharedJunctionGeo,
+      primaryCrystalGeo,
+      supportingCrystalGeo,
+      sharedRingGeo,
       sharedHitGeo
     );
     materialsToDispose.push(sharedHitMat);
@@ -551,98 +474,108 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
     const proxyToNode = new Map<THREE.Object3D, SkillRuntimeNode>();
 
     for (const node of nodes) {
-      const anchorGroup = new THREE.Group();
+      const vertexGroup = new THREE.Group();
       const unitNormalLocal = new THREE.Vector3(...node.unitPos).normalize();
+      const isPrimary = node.prominence === 'primary';
 
-      // Surface socket ring oriented tangent to the globe surface
-      const socketMaterial = new THREE.MeshBasicMaterial({
+      // Faceted metallic glowing junction crystal at exact spherical vertex
+      const crystalMaterial = new THREE.MeshStandardMaterial({
         color: new THREE.Color(node.glowHex),
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.85,
-      });
-      materialsToDispose.push(socketMaterial);
-      const socketMesh = new THREE.Mesh(sharedSocketGeo, socketMaterial);
-      socketMesh.position.copy(unitNormalLocal).multiplyScalar(GLOBE_RADIUS + 0.012);
-      socketMesh.quaternion.setFromUnitVectors(_zAxis, unitNormalLocal);
-      anchorGroup.add(socketMesh);
-
-      // Radial anchor pin stem extending out from the surface socket
-      const stemMaterial = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(node.accentHex),
         emissive: new THREE.Color(node.accentHex),
-        emissiveIntensity: 0.4,
-        metalness: 0.7,
-        roughness: 0.3,
-        transparent: true,
-        opacity: 0.9,
-      });
-      materialsToDispose.push(stemMaterial);
-      const stemMesh = new THREE.Mesh(sharedStemGeo, stemMaterial);
-      stemMesh.position.copy(unitNormalLocal).multiplyScalar(GLOBE_RADIUS + 0.11);
-      stemMesh.quaternion.setFromUnitVectors(_yAxis, unitNormalLocal);
-      anchorGroup.add(stemMesh);
-
-      // Glowing junction node at the socket base
-      const junctionMaterial = new THREE.MeshBasicMaterial({
-        color: new THREE.Color(node.glowHex),
+        emissiveIntensity: isPrimary ? 1.15 : 0.85,
+        metalness: 0.82,
+        roughness: 0.18,
         transparent: true,
         opacity: 0.95,
       });
-      materialsToDispose.push(junctionMaterial);
-      const junctionMesh = new THREE.Mesh(sharedJunctionGeo, junctionMaterial);
-      junctionMesh.position.copy(unitNormalLocal).multiplyScalar(GLOBE_RADIUS + 0.025);
-      anchorGroup.add(junctionMesh);
+      materialsToDispose.push(crystalMaterial);
+      const crystalMesh = new THREE.Mesh(
+        isPrimary ? primaryCrystalGeo : supportingCrystalGeo,
+        crystalMaterial
+      );
+      crystalMesh.position.copy(unitNormalLocal).multiplyScalar(SPHERE_RADIUS);
+      vertexGroup.add(crystalMesh);
 
-      // Crisp icon + label surface medallion sprite physically attached at stem tip
-      const badgeTex = createSkillBadgeTexture(node, maxAnisotropy);
-      texturesToDispose.push(badgeTex);
-      const badgeMaterial = new THREE.SpriteMaterial({
-        map: badgeTex,
+      // Precision tangent orbital collar flush with the spherical surface
+      const ringMaterial = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(node.glowHex),
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: isPrimary ? 0.65 : 0.42,
+        depthWrite: false,
+      });
+      materialsToDispose.push(ringMaterial);
+      const ringMesh = new THREE.Mesh(sharedRingGeo, ringMaterial);
+      ringMesh.position.copy(unitNormalLocal).multiplyScalar(SPHERE_RADIUS);
+      ringMesh.quaternion.setFromUnitVectors(_zAxis, unitNormalLocal);
+      vertexGroup.add(ringMesh);
+
+      // Subtle glowing starlight flare centered on the vertex
+      const flareMaterial = new THREE.SpriteMaterial({
+        map: nodeFlareTex,
+        color: new THREE.Color(node.glowHex),
+        transparent: true,
+        opacity: isPrimary ? 0.58 : 0.36,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      materialsToDispose.push(flareMaterial);
+      const flareSprite = new THREE.Sprite(flareMaterial);
+      flareSprite.position.copy(unitNormalLocal).multiplyScalar(SPHERE_RADIUS);
+      const flareSize = isPrimary ? 0.42 : 0.28;
+      flareSprite.scale.set(flareSize, flareSize, 1);
+      vertexGroup.add(flareSprite);
+
+      // Borderless floating holographic technology logo + skill name
+      const holoTex = createSkillHologramTexture(node, maxAnisotropy);
+      texturesToDispose.push(holoTex);
+      const labelMaterial = new THREE.SpriteMaterial({
+        map: holoTex,
         transparent: true,
         opacity: 1,
         depthWrite: false,
       });
-      materialsToDispose.push(badgeMaterial);
+      materialsToDispose.push(labelMaterial);
 
-      const badgeSprite = new THREE.Sprite(badgeMaterial);
-      badgeSprite.position.copy(unitNormalLocal).multiplyScalar(GLOBE_RADIUS + 0.34);
-      badgeSprite.scale.set(0.96, 0.27, 1);
-      anchorGroup.add(badgeSprite);
+      const labelSprite = new THREE.Sprite(labelMaterial);
+      labelSprite.position
+        .copy(unitNormalLocal)
+        .multiplyScalar(SPHERE_RADIUS + 0.18);
+      labelSprite.scale.set(1.18, 0.315, 1);
+      vertexGroup.add(labelSprite);
 
-      // Invisible raycast collision proxy centered on the badge tip
+      // Raycasting proxy sphere for smooth hover & click picking
       const hitProxy = new THREE.Mesh(sharedHitGeo, sharedHitMat);
-      hitProxy.position.copy(badgeSprite.position);
-      anchorGroup.add(hitProxy);
+      hitProxy.position.copy(labelSprite.position);
+      vertexGroup.add(hitProxy);
 
-      globeGroup.add(anchorGroup);
+      skillSphereGroup.add(vertexGroup);
 
       const runtime: SkillRuntimeNode = {
         data: node,
-        anchorGroup,
-        socketMesh,
-        socketMaterial,
-        stemMesh,
-        stemMaterial,
-        junctionMesh,
-        junctionMaterial,
-        badgeSprite,
-        badgeMaterial,
+        vertexGroup,
+        crystalMesh,
+        crystalMaterial,
+        ringMesh,
+        ringMaterial,
+        flareSprite,
+        flareMaterial,
+        labelSprite,
+        labelMaterial,
         hitProxy,
         unitNormalLocal,
-        currentScale: 1,
+        currentScale: node.visualWeight,
       };
       runtimeNodes.push(runtime);
       hitProxies.push(hitProxy);
       proxyToNode.set(hitProxy, runtime);
     }
 
-    // Pre-warm shaders on hardware GPUs (skip on software WebGL per threejs skill)
     if (!isSoftwareGl) {
       renderer.compile(scene, camera);
     }
 
-    // Interactive state (mutable, zero React re-render overhead)
+    // Mutable interaction state (zero React state churn at 60fps)
     let isPointerDown = false;
     let didDrag = false;
     let pointerDownX = 0;
@@ -679,15 +612,15 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
       if (!found) return;
       const { rotX, rotY } = computeTargetRotationForNode(found.data.unitPos);
       targetRotX = rotX;
-      targetRotY = normalizeAngleDelta(globeGroup.rotation.y, rotY);
+      targetRotY = normalizeAngleDelta(skillSphereGroup.rotation.y, rotY);
       rotVelX = 0;
       rotVelY = 0;
     };
     focusNodeRef.current = focusNodeById;
 
     const resetView = () => {
-      targetRotX = 0.18;
-      targetRotY = normalizeAngleDelta(globeGroup.rotation.y, -0.45);
+      targetRotX = 0.16;
+      targetRotY = normalizeAngleDelta(skillSphereGroup.rotation.y, -0.35);
       rotVelX = 0;
       rotVelY = 0;
       resumeAutoRotateAt = 0;
@@ -695,97 +628,107 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
     };
     resetViewFnRef.current = resetView;
 
-    // Step scene simulation & update depth-based node fading
+    // Frame step: rotation kinematics, depth-based fading & filament highlighting
     const stepScene = (dt: number, nowMs: number) => {
       const clampedDt = Math.min(Math.max(dt, 0.001), 0.08);
       const selectedId = selectedSkillIdRef.current;
       const activeCat = activeCategoryRef.current;
 
-      // 1. Apply focused target rotation, drag inertia, or gentle auto-rotation
+      // 1. Apply focus damping, drag momentum, or controlled continuous rotation
       if (!isPointerDown) {
         if (targetRotX !== null && targetRotY !== null) {
           const dampK = 6.5;
-          globeGroup.rotation.x = THREE.MathUtils.damp(
-            globeGroup.rotation.x,
+          skillSphereGroup.rotation.x = THREE.MathUtils.damp(
+            skillSphereGroup.rotation.x,
             targetRotX,
             dampK,
             clampedDt
           );
-          globeGroup.rotation.y = THREE.MathUtils.damp(
-            globeGroup.rotation.y,
+          skillSphereGroup.rotation.y = THREE.MathUtils.damp(
+            skillSphereGroup.rotation.y,
             targetRotY,
             dampK,
             clampedDt
           );
           if (
-            Math.abs(globeGroup.rotation.x - targetRotX) < 0.004 &&
-            Math.abs(globeGroup.rotation.y - targetRotY) < 0.004
+            Math.abs(skillSphereGroup.rotation.x - targetRotX) < 0.004 &&
+            Math.abs(skillSphereGroup.rotation.y - targetRotY) < 0.004
           ) {
-            globeGroup.rotation.x = targetRotX;
-            globeGroup.rotation.y = targetRotY;
+            skillSphereGroup.rotation.x = targetRotX;
+            skillSphereGroup.rotation.y = targetRotY;
             if (!selectedId) {
               targetRotX = null;
               targetRotY = null;
             }
           }
         } else {
-          // Coast drag velocity with smooth exponential friction
-          globeGroup.rotation.y += rotVelY * clampedDt;
-          globeGroup.rotation.x = THREE.MathUtils.clamp(
-            globeGroup.rotation.x + rotVelX * clampedDt,
-            -1.05,
-            1.05
+          skillSphereGroup.rotation.y += rotVelY * clampedDt;
+          skillSphereGroup.rotation.x = THREE.MathUtils.clamp(
+            skillSphereGroup.rotation.x + rotVelX * clampedDt,
+            -1.08,
+            1.08
           );
-          const friction = Math.exp(-5.2 * clampedDt);
+          const friction = Math.exp(-5.0 * clampedDt);
           rotVelX *= friction;
           rotVelY *= friction;
 
-          // Resume smooth controlled auto-rotation when idle
           const canAutoRotate =
             autoRotateRef.current &&
             !reducedMotionRef.current &&
             !selectedId &&
-            hoveredSkillId === null &&
             nowMs >= resumeAutoRotateAt;
 
           if (canAutoRotate) {
-            globeGroup.rotation.y += 0.145 * clampedDt;
+            // Slow smoothly while hovering a node so user can read/click effortlessly
+            const speed = hoveredSkillId !== null ? 0.032 : 0.165;
+            skillSphereGroup.rotation.y += speed * clampedDt;
           }
         }
       }
 
-      // Gentle counter-drift for outer orbital rings & starfield
       if (!reducedMotionRef.current) {
-        outerRingMesh.rotation.z += 0.065 * clampedDt;
-        secondaryRingMesh.rotation.z -= 0.045 * clampedDt;
-        starField.rotation.y += 0.012 * clampedDt;
+        haloRingMesh.rotation.z += 0.05 * clampedDt;
+        starField.rotation.y += 0.01 * clampedDt;
       }
 
-      globeGroup.updateMatrixWorld(true);
-      globeGroup.getWorldQuaternion(_globeWorldQuat);
+      skillSphereGroup.updateMatrixWorld(true);
+      skillSphereGroup.getWorldQuaternion(_globeWorldQuat);
 
-      // 2. Depth-based front/back visibility & smooth hover/selected scaling
-      const baseSpriteW = 0.96;
-      const baseSpriteH = 0.27;
+      // Identify neighbors directly wired to the focused/hovered technology
+      const focusId = selectedId ?? hoveredSkillId;
+      const connectedToFocus = new Set<string>();
+      if (focusId) {
+        for (let i = 0; i < edgeRuntimes.length; i += 1) {
+          const ed = edgeRuntimes[i].data;
+          if (ed.fromId === focusId) connectedToFocus.add(ed.toId);
+          else if (ed.toId === focusId) connectedToFocus.add(ed.fromId);
+        }
+      }
+
+      // 2. Depth-based visibility, prominence weighting & hover highlight per skill node
+      const baseSpriteW = 1.18;
+      const baseSpriteH = 0.315;
       for (let i = 0; i < runtimeNodes.length; i += 1) {
         const rn = runtimeNodes[i];
         _worldNormal.copy(rn.unitNormalLocal).applyQuaternion(_globeWorldQuat);
         _nodeWorldPos
           .copy(_worldNormal)
-          .multiplyScalar(GLOBE_RADIUS)
-          .add(globeGroup.position);
+          .multiplyScalar(SPHERE_RADIUS)
+          .add(skillSphereGroup.position);
         _toCamera.copy(camera.position).sub(_nodeWorldPos).normalize();
         const facingDot = _worldNormal.dot(_toCamera);
 
         const isHighlighted =
           rn.data.id === hoveredSkillId || rn.data.id === selectedId;
+        const isConnectedPeer = connectedToFocus.has(rn.data.id);
         const isDimmed =
           activeCat !== 'All' && rn.data.category !== activeCat;
 
         const metrics = computeNodeDepthMetrics(
           facingDot,
           isHighlighted,
-          isDimmed
+          isDimmed,
+          rn.data.visualWeight
         );
 
         rn.currentScale = THREE.MathUtils.damp(
@@ -795,61 +738,92 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
           clampedDt
         );
 
-        rn.badgeSprite.scale.set(
+        rn.labelSprite.scale.set(
           baseSpriteW * rn.currentScale,
           baseSpriteH * rn.currentScale,
           1
         );
-        rn.badgeMaterial.opacity = metrics.opacity;
-        rn.socketMaterial.opacity = Math.min(1, metrics.opacity * 0.92);
-        rn.stemMaterial.opacity = Math.min(1, metrics.opacity * 0.9);
-        rn.junctionMaterial.opacity = Math.min(1, metrics.opacity * 1.0);
-        rn.stemMaterial.emissiveIntensity = isHighlighted ? 1.35 : 0.35;
 
-        // Higher renderOrder for front & highlighted badges so they never clip behind back nodes
-        rn.badgeSprite.renderOrder = isHighlighted
-          ? 30
-          : Math.round((facingDot + 1) * 10);
+        const effectiveOpacity = isConnectedPeer
+          ? Math.max(metrics.opacity, 0.78)
+          : metrics.opacity;
+
+        rn.labelMaterial.opacity = effectiveOpacity;
+        rn.crystalMaterial.opacity = Math.min(1, effectiveOpacity + 0.12);
+        rn.crystalMaterial.emissiveIntensity = isHighlighted
+          ? 2.2
+          : isConnectedPeer
+            ? 1.45
+            : rn.data.prominence === 'primary'
+              ? 1.05
+              : 0.72;
+        rn.ringMaterial.opacity = isHighlighted
+          ? 0.95
+          : Math.min(0.85, effectiveOpacity * 0.72);
+        rn.flareMaterial.opacity = isHighlighted
+          ? 0.92
+          : effectiveOpacity * (rn.data.prominence === 'primary' ? 0.52 : 0.32);
+
+        // Rotate each crystal vertex gently for subtle jewel-like shimmer
+        if (!reducedMotionRef.current) {
+          rn.crystalMesh.rotation.y += 0.65 * clampedDt;
+          rn.crystalMesh.rotation.x += 0.35 * clampedDt;
+        }
+
+        // Front & highlighted labels draw cleanly over deeper back-side nodes
+        rn.labelSprite.renderOrder = isHighlighted
+          ? 40
+          : Math.round((facingDot + 1) * 14);
       }
 
-      // 3. Highlight constellation arcs matching active category or hovered/selected skill
-      const activeSkillNode = selectedId
-        ? nodeLookup.get(selectedId)
-        : hoveredSkillId
-          ? nodeLookup.get(hoveredSkillId)
-          : null;
+      // 3. Depth-attenuate & highlight interconnected geodesic filaments
+      for (let i = 0; i < edgeRuntimes.length; i += 1) {
+        const er = edgeRuntimes[i];
+        _worldNormal.copy(er.midUnitLocal).applyQuaternion(_globeWorldQuat);
+        _nodeWorldPos
+          .copy(_worldNormal)
+          .multiplyScalar(SPHERE_RADIUS)
+          .add(skillSphereGroup.position);
+        _toCamera.copy(camera.position).sub(_nodeWorldPos).normalize();
+        const dot = _worldNormal.dot(_toCamera);
+        const depthFactor = Math.max(0.18, Math.min(1, (dot + 0.45) / 0.95));
 
-      for (let i = 0; i < arcRuntimes.length; i += 1) {
-        const ar = arcRuntimes[i];
-        let targetOp = 0.18;
-        if (activeSkillNode) {
-          if (
-            ar.data.fromId === activeSkillNode.id ||
-            ar.data.toId === activeSkillNode.id
-          ) {
-            targetOp = 0.85;
-          } else if (ar.data.category === activeSkillNode.category) {
-            targetOp = 0.42;
+        let targetOp = (er.data.kind === 'discipline' ? 0.34 : 0.21) * depthFactor;
+        if (focusId) {
+          if (er.data.fromId === focusId || er.data.toId === focusId) {
+            targetOp = 0.92;
           } else {
-            targetOp = 0.06;
+            targetOp *= 0.32;
           }
         } else if (activeCat !== 'All') {
-          targetOp = ar.data.category === activeCat ? 0.62 : 0.05;
+          const fromCat = nodeLookup.get(er.data.fromId)?.category;
+          const toCat = nodeLookup.get(er.data.toId)?.category;
+          if (fromCat === activeCat && toCat === activeCat) {
+            targetOp = 0.74 * depthFactor;
+          } else if (fromCat === activeCat || toCat === activeCat) {
+            targetOp = 0.24 * depthFactor;
+          } else {
+            targetOp = 0.05;
+          }
         }
-        ar.material.opacity = THREE.MathUtils.damp(
-          ar.material.opacity,
+
+        er.material.opacity = THREE.MathUtils.damp(
+          er.material.opacity,
           targetOp,
-          8,
+          9,
           clampedDt
         );
       }
     };
 
-    // Software-WebGL fenceSync helper from threejs skill
+    // Software-WebGL fenceSync frame pacing (prevents CPU starvation)
     function afterDraw(cb: () => void) {
       if (disposed) return;
       const gl = renderer.getContext();
-      if (typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext) {
+      if (
+        typeof WebGL2RenderingContext !== 'undefined' &&
+        gl instanceof WebGL2RenderingContext
+      ) {
         const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
         gl.flush();
         const poll = () => {
@@ -879,7 +853,7 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
 
     function requestRender() {
       if (disposed) return;
-      if (shouldLoopContinuously()) return; // Continuous tick already drives rendering
+      if (shouldLoopContinuously()) return;
       if (renderBusy) {
         renderDirty = true;
         return;
@@ -908,24 +882,17 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
 
     function tick() {
       if (disposed) return;
-      if (!shouldLoopContinuously()) {
-        // Draw one clean settled frame if needed and pause loop
-        return;
-      }
+      if (!shouldLoopContinuously()) return;
       const now = performance.now();
       const dt = (now - lastTimeMs) / 1000;
       lastTimeMs = now;
       stepScene(dt, now);
       renderer.render(scene, camera);
 
-      if (isSoftwareGl) {
-        afterDraw(tick);
-      } else {
-        frameId = requestAnimationFrame(tick);
-      }
+      if (isSoftwareGl) afterDraw(tick);
+      else frameId = requestAnimationFrame(tick);
     }
 
-    // Raycasting helper restricting hits strictly to front-hemisphere skill badges
     const pickSkillAtPointer = (
       clientX: number,
       clientY: number
@@ -939,7 +906,7 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
       const hits = _raycaster.intersectObjects(hitProxies, false);
       if (hits.length === 0) return null;
 
-      globeGroup.getWorldQuaternion(_globeWorldQuat);
+      skillSphereGroup.getWorldQuaternion(_globeWorldQuat);
       for (let i = 0; i < hits.length; i += 1) {
         const candidate = proxyToNode.get(hits[i].object);
         if (!candidate) continue;
@@ -948,10 +915,10 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
           .applyQuaternion(_globeWorldQuat);
         _nodeWorldPos
           .copy(_worldNormal)
-          .multiplyScalar(GLOBE_RADIUS)
-          .add(globeGroup.position);
+          .multiplyScalar(SPHERE_RADIUS)
+          .add(skillSphereGroup.position);
         _toCamera.copy(camera.position).sub(_nodeWorldPos).normalize();
-        if (_worldNormal.dot(_toCamera) > -0.06) {
+        if (_worldNormal.dot(_toCamera) > -0.08) {
           return candidate;
         }
       }
@@ -970,7 +937,7 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
       }
 
       const rect = renderer.domElement.getBoundingClientRect();
-      rn.badgeSprite.getWorldPosition(_vecA);
+      rn.labelSprite.getWorldPosition(_vecA);
       _vecA.project(camera);
       const sx = ((_vecA.x + 1) / 2) * rect.width;
       const sy = (-(_vecA.y - 1) / 2) * rect.height;
@@ -985,7 +952,6 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
       requestRender();
     };
 
-    // Pointer interaction handlers (drag to rotate + hover preview + click inspect)
     const onPointerDown = (e: PointerEvent) => {
       if (e.button !== 0 && e.pointerType === 'mouse') return;
       isPointerDown = true;
@@ -1018,11 +984,11 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
           }
         }
         const sensitivity = 0.0062;
-        globeGroup.rotation.y += dx * sensitivity;
-        globeGroup.rotation.x = THREE.MathUtils.clamp(
-          globeGroup.rotation.x + dy * sensitivity,
-          -1.05,
-          1.05
+        skillSphereGroup.rotation.y += dx * sensitivity;
+        skillSphereGroup.rotation.x = THREE.MathUtils.clamp(
+          skillSphereGroup.rotation.x + dy * sensitivity,
+          -1.08,
+          1.08
         );
         rotVelY = dx * 0.22;
         rotVelX = dy * 0.16;
@@ -1032,7 +998,6 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
         return;
       }
 
-      // Throttled pointermove raycast (<= 25Hz)
       const now = performance.now();
       if (now - lastRaycastTime < 40) return;
       lastRaycastTime = now;
@@ -1047,7 +1012,7 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
         renderer.domElement.releasePointerCapture(e.pointerId);
       }
       onDraggingChangeRef.current(false);
-      resumeAutoRotateAt = performance.now() + 2000;
+      resumeAutoRotateAt = performance.now() + 1800;
       renderer.domElement.style.cursor = 'grab';
 
       if (!didDrag) {
@@ -1090,7 +1055,6 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
     dom.addEventListener('webglcontextlost', onContextLost);
     dom.addEventListener('webglcontextrestored', onContextRestored);
 
-    // Responsive ResizeObserver
     const resizeObserver = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry || disposed) return;
@@ -1104,7 +1068,6 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
     });
     resizeObserver.observe(mountEl);
 
-    // IntersectionObserver pauses WebGL loop when section is off-screen
     const intersectionObserver = new IntersectionObserver(
       (entries) => {
         const entry = entries[0];
@@ -1154,7 +1117,7 @@ export const TechGlobeCanvas: React.FC<TechGlobeCanvasProps> = ({
       focusNodeRef.current = null;
       resetViewFnRef.current = null;
     };
-  }, [nodes, arcs]);
+  }, [nodes, edges]);
 
   return (
     <div

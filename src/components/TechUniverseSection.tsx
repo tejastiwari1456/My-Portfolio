@@ -12,16 +12,18 @@ import {
   Award,
   Layers,
   ListFilter,
+  Network,
 } from 'lucide-react';
 import { PORTFOLIO_DATA } from '../data/portfolioData';
 import {
   GLOBE_CATEGORY_VISUALS,
   GlobeCategoryId,
   GlobeSkillNode,
-  buildCategoryConnectionArcs,
   buildGlobeSkillNodes,
+  buildSphericalMeshConnections,
   filterGlobeNodesByCategory,
   formatSphericalCoords,
+  getConnectedSkillNeighbors,
 } from '../utils/techGlobeLogic';
 import {
   HoveredSkillPayload,
@@ -43,11 +45,11 @@ const CATEGORY_TABS: { id: GlobeCategoryId; label: string }[] = [
 
 export const TechUniverseSection: React.FC = () => {
   const globeNodes = useMemo(
-    () => buildGlobeSkillNodes(PORTFOLIO_DATA.skillCategories, 2.25),
+    () => buildGlobeSkillNodes(PORTFOLIO_DATA.skillCategories, 2.42),
     []
   );
-  const connectionArcs = useMemo(
-    () => buildCategoryConnectionArcs(globeNodes),
+  const meshEdges = useMemo(
+    () => buildSphericalMeshConnections(globeNodes, 3),
     [globeNodes]
   );
 
@@ -77,7 +79,6 @@ export const TechUniverseSection: React.FC = () => {
     return () => mq.removeEventListener('change', onChange);
   }, []);
 
-  // Escape key closes selected skill detail panel or skill index drawer
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -96,6 +97,15 @@ export const TechUniverseSection: React.FC = () => {
     () => filterGlobeNodesByCategory(globeNodes, activeCategory),
     [globeNodes, activeCategory]
   );
+
+  const connectedNeighbors = useMemo(() => {
+    if (!selectedSkill) return [];
+    return getConnectedSkillNeighbors(
+      selectedSkill.id,
+      globeNodes,
+      meshEdges
+    ).slice(0, 4);
+  }, [selectedSkill, globeNodes, meshEdges]);
 
   const handleSelectSkill = useCallback((node: GlobeSkillNode | null) => {
     setSelectedSkill(node);
@@ -127,11 +137,11 @@ export const TechUniverseSection: React.FC = () => {
       className="py-20 md:py-28 bg-[#F8FAFC] border-t border-slate-200/80 relative overflow-hidden"
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Section Header aligned with existing portfolio editorial hierarchy */}
+        {/* Section Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
           <Reveal className="max-w-2xl">
             <div className="text-xs font-bold uppercase tracking-wider text-blue-600 mb-2">
-              Interactive 3D Showcase
+              Interactive 3D Constellation
             </div>
             <h2
               id="tech-universe-heading"
@@ -141,38 +151,37 @@ export const TechUniverseSection: React.FC = () => {
               My Technical Universe
             </h2>
             <p className="mt-2.5 text-base text-slate-600 leading-relaxed">
-              Explore the technologies and tools that power my development
-              journey.
+              A 3D sphere constructed directly from the languages, frameworks,
+              databases, and CS foundations powering my work.
             </p>
           </Reveal>
 
-          {/* Concise unboxed metadata & interaction hint */}
           <Reveal
             delay={0.1}
             className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium text-slate-500"
           >
             <span className="tabular-nums text-slate-700 font-semibold">
-              {filteredNodes.length} of {globeNodes.length} skills active
+              {filteredNodes.length} of {globeNodes.length} skill nodes
             </span>
             <span aria-hidden="true">·</span>
-            <span>Drag to orbit</span>
+            <span>Drag to rotate</span>
             <span aria-hidden="true">·</span>
-            <span>Click any node to inspect</span>
+            <span>Click any skill to inspect</span>
           </Reveal>
         </div>
 
-        {/* Celestial 3D Observatory Stage */}
+        {/* Dark Futuristic 3D Spatial Viewport */}
         <div
           data-testid="tech-universe-stage"
           data-selected-skill={selectedSkill ? selectedSkill.id : ''}
           data-active-category={activeCategory}
-          className="relative w-full h-[540px] sm:h-[620px] lg:h-[660px] rounded-3xl overflow-hidden border border-slate-800/80 shadow-xl shadow-slate-900/15"
+          className="relative w-full h-[540px] sm:h-[620px] lg:h-[660px] rounded-3xl overflow-hidden border border-slate-800/85 shadow-xl shadow-slate-950/20"
           style={{
             background:
-              'radial-gradient(ellipse 75% 70% at 50% 46%, #0F1E3D 0%, #070E20 58%, #040814 100%)',
+              'radial-gradient(ellipse 72% 68% at 50% 46%, #0D1430 0%, #060B1A 56%, #030610 100%)',
           }}
         >
-          {/* Subtle top-left non-obstructive orientation header */}
+          {/* Non-obstructive top-left orientation label */}
           <div className="pointer-events-none absolute top-4 left-4 sm:top-5 sm:left-6 z-10 flex items-center gap-2.5 text-xs text-slate-300">
             <Compass className="w-4 h-4 text-sky-400 shrink-0" />
             <span className="font-semibold text-slate-100">
@@ -183,9 +192,9 @@ export const TechUniverseSection: React.FC = () => {
             </span>
             <span className="text-slate-400 hidden sm:inline">
               {isDragging
-                ? 'Orbiting manually'
+                ? 'Rotating manually'
                 : selectedSkill
-                  ? `Inspecting ${selectedSkill.name}`
+                  ? `Focused on ${selectedSkill.name}`
                   : reducedMotion
                     ? 'Reduced motion active'
                     : autoRotate
@@ -194,7 +203,7 @@ export const TechUniverseSection: React.FC = () => {
             </span>
           </div>
 
-          {/* Top-right compact Skill Directory trigger (accessible keyboard navigation to all 32 nodes) */}
+          {/* Top-right Skill Index quick locator */}
           <div className="absolute top-4 right-4 sm:top-5 sm:right-6 z-20 flex items-center gap-2">
             <button
               type="button"
@@ -202,14 +211,14 @@ export const TechUniverseSection: React.FC = () => {
               aria-expanded={indexOpen}
               aria-label="Browse all skills on globe"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-200 hover:text-white border border-slate-700/90 hover:border-sky-400/70 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-              style={{ backgroundColor: 'rgba(11, 19, 39, 0.92)' }}
+              style={{ backgroundColor: 'rgba(8, 13, 30, 0.92)' }}
             >
               <ListFilter className="w-3.5 h-3.5 text-sky-400" />
               <span>Skill Index</span>
             </button>
           </div>
 
-          {/* 3D WebGL Canvas OR Graceful 2D Orbital Fallback */}
+          {/* 3D Skill-Constructed Sphere Canvas OR 2D Fallback */}
           {webglUnavailable ? (
             <TechGlobeFallback
               nodes={globeNodes}
@@ -220,7 +229,7 @@ export const TechUniverseSection: React.FC = () => {
           ) : (
             <TechGlobeCanvas
               nodes={globeNodes}
-              arcs={connectionArcs}
+              edges={meshEdges}
               activeCategory={activeCategory}
               selectedSkillId={selectedSkill?.id ?? null}
               autoRotate={autoRotate}
@@ -233,7 +242,7 @@ export const TechUniverseSection: React.FC = () => {
             />
           )}
 
-          {/* Hover Tooltip (anchored cleanly near hovered 3D node, no backdrop-filter over WebGL) */}
+          {/* Hover Tooltip (solid/rgba dark obsidian — no backdrop-filter over WebGL) */}
           <AnimatePresence>
             {hoveredSkill &&
               hoveredSkill.node.id !== selectedSkill?.id &&
@@ -245,10 +254,10 @@ export const TechUniverseSection: React.FC = () => {
                   exit={{ opacity: 0, y: 4, scale: 0.96 }}
                   transition={{ duration: 0.14 }}
                   role="tooltip"
-                  className="pointer-events-none absolute z-20 px-3.5 py-2.5 rounded-xl border border-slate-700/90 shadow-lg max-w-[240px]"
+                  className="pointer-events-none absolute z-20 px-3.5 py-2.5 rounded-xl border border-indigo-500/40 shadow-lg max-w-[250px]"
                   style={{
-                    backgroundColor: 'rgba(9, 15, 31, 0.96)',
-                    left: `clamp(16px, ${Math.round(hoveredSkill.screenX)}px, calc(100% - 252px))`,
+                    backgroundColor: 'rgba(7, 11, 26, 0.96)',
+                    left: `clamp(16px, ${Math.round(hoveredSkill.screenX)}px, calc(100% - 262px))`,
                     top: `clamp(56px, ${Math.round(hoveredSkill.screenY - 74)}px, calc(100% - 140px))`,
                   }}
                 >
@@ -267,13 +276,13 @@ export const TechUniverseSection: React.FC = () => {
                     <span aria-hidden="true" className="text-slate-500">
                       ·
                     </span>
-                    <span className="text-sky-300">Click for details</span>
+                    <span className="text-sky-300">Click to inspect</span>
                   </div>
                 </motion.div>
               )}
           </AnimatePresence>
 
-          {/* Accessible Quick-Select Skill Index Popover */}
+          {/* Accessible Quick-Select Skill Index */}
           <AnimatePresence>
             {indexOpen && (
               <motion.div
@@ -284,7 +293,7 @@ export const TechUniverseSection: React.FC = () => {
                 role="region"
                 aria-label="Globe Skill Directory"
                 className="absolute top-14 right-4 sm:right-6 z-30 w-[calc(100%-2rem)] max-w-xs max-h-[340px] overflow-y-auto rounded-2xl border border-slate-700/90 shadow-2xl p-3.5"
-                style={{ backgroundColor: 'rgba(9, 15, 31, 0.97)' }}
+                style={{ backgroundColor: 'rgba(7, 11, 26, 0.97)' }}
               >
                 <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-800">
                   <span className="text-xs font-bold text-white">
@@ -333,8 +342,8 @@ export const TechUniverseSection: React.FC = () => {
                 transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
                 aria-label={`${selectedSkill.name} details`}
                 data-testid="globe-skill-detail-panel"
-                className="absolute top-14 left-4 right-4 sm:left-6 sm:right-auto sm:w-[340px] z-30 rounded-2xl border border-slate-700/90 shadow-2xl p-5 text-slate-100"
-                style={{ backgroundColor: 'rgba(9, 15, 31, 0.96)' }}
+                className="absolute top-14 left-4 right-4 sm:left-6 sm:right-auto sm:w-[348px] z-30 rounded-2xl border border-indigo-500/35 shadow-2xl p-5 text-slate-100"
+                style={{ backgroundColor: 'rgba(7, 11, 26, 0.96)' }}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -367,7 +376,7 @@ export const TechUniverseSection: React.FC = () => {
                   {selectedSkill.categoryDescription}
                 </p>
 
-                <div className="mt-4 space-y-2.5 pt-3.5 border-t border-slate-800 text-xs">
+                <div className="mt-4 space-y-2.5 pt-3.5 border-t border-slate-800/90 text-xs">
                   {selectedSkill.level && (
                     <div className="flex items-start gap-2">
                       <Award className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5" />
@@ -394,7 +403,7 @@ export const TechUniverseSection: React.FC = () => {
 
                   <div className="flex items-center gap-2">
                     <Layers className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                    <span className="text-slate-400">Surface position:</span>
+                    <span className="text-slate-400">Sphere coordinates:</span>
                     <span className="font-mono-code tabular-nums text-[11px] text-slate-200">
                       {formatSphericalCoords(
                         selectedSkill.latDeg,
@@ -402,9 +411,30 @@ export const TechUniverseSection: React.FC = () => {
                       )}
                     </span>
                   </div>
+
+                  {connectedNeighbors.length > 0 && (
+                    <div className="pt-1.5">
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mb-2">
+                        <Network className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+                        <span>Linked nodes in sphere:</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {connectedNeighbors.map((peer) => (
+                          <button
+                            key={peer.id}
+                            type="button"
+                            onClick={() => handleSelectSkill(peer)}
+                            className="px-2 py-1 rounded-md text-[11px] font-medium text-sky-200 bg-slate-900 hover:bg-slate-800 border border-slate-700/80 hover:border-sky-400/70 transition-colors"
+                          >
+                            {peer.shortLabel}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between gap-3">
+                <div className="mt-4 pt-3 border-t border-slate-800/90 flex items-center justify-between gap-3">
                   <button
                     type="button"
                     onClick={() => handleSelectSkill(null)}
@@ -427,7 +457,7 @@ export const TechUniverseSection: React.FC = () => {
               onClick={() => setDockExpanded((prev) => !prev)}
               aria-expanded={dockExpanded}
               className="pointer-events-auto inline-flex items-center gap-1.5 px-3 py-1 rounded-t-xl border border-b-0 border-slate-700/80 text-[11px] font-semibold text-slate-300 hover:text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 whitespace-nowrap"
-              style={{ backgroundColor: 'rgba(9, 15, 31, 0.94)' }}
+              style={{ backgroundColor: 'rgba(7, 11, 26, 0.94)' }}
             >
               {dockExpanded ? (
                 <>
@@ -450,7 +480,7 @@ export const TechUniverseSection: React.FC = () => {
                   exit={{ opacity: 0, y: 12 }}
                   transition={{ duration: 0.18 }}
                   className="pointer-events-auto w-full rounded-2xl border border-slate-700/85 shadow-2xl px-3 py-2 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2"
-                  style={{ backgroundColor: 'rgba(9, 15, 31, 0.94)' }}
+                  style={{ backgroundColor: 'rgba(7, 11, 26, 0.94)' }}
                 >
                   {/* Category Filter Controls */}
                   <div

@@ -10,6 +10,8 @@ export type GlobeCategoryId =
   | 'Core CS Concepts'
   | 'Tools & Platforms';
 
+export type SkillProminence = 'primary' | 'supporting';
+
 export interface GlobeCategoryVisual {
   id: Exclude<GlobeCategoryId, 'All'>;
   shortLabel: string;
@@ -29,6 +31,9 @@ export interface GlobeSkillNode {
   categoryDescription: string;
   level?: string;
   inProjects: string[];
+  prominence: SkillProminence;
+  /** Visual size multiplier differentiating prominent vs supporting technologies */
+  visualWeight: number;
   accentHex: string;
   glowHex: string;
   /** Unit sphere direction vector (length 1) */
@@ -41,10 +46,11 @@ export interface GlobeSkillNode {
   lonDeg: number;
 }
 
-export interface GlobeConnectionArc {
+export interface GlobeConnectionEdge {
   id: string;
   fromId: string;
   toId: string;
+  kind: 'structural' | 'discipline';
   category: Exclude<GlobeCategoryId, 'All'>;
   accentHex: string;
 }
@@ -52,12 +58,16 @@ export interface GlobeConnectionArc {
 export interface NodeDepthMetrics {
   /** 0.0 (far back) to 1.0 (facing camera) */
   opacity: number;
-  /** Visual scale factor based on front-facing alignment */
+  /** Visual scale factor based on depth, prominence, and focus state */
   scaleFactor: number;
   /** Whether the node is on the interactive front hemisphere */
   interactive: boolean;
 }
 
+/**
+ * Cohesive blue / cyan / violet futuristic palette harmonized across the
+ * seven factual skill disciplines from PORTFOLIO_DATA.
+ */
 export const GLOBE_CATEGORY_VISUALS: Record<
   Exclude<GlobeCategoryId, 'All'>,
   GlobeCategoryVisual
@@ -67,9 +77,9 @@ export const GLOBE_CATEGORY_VISUALS: Record<
     shortLabel: 'Languages',
     accentHex: '#3B82F6',
     glowHex: '#60A5FA',
-    badgeBg: 'rgba(37, 99, 235, 0.16)',
+    badgeBg: 'rgba(59, 130, 246, 0.16)',
     badgeText: '#93C5FD',
-    badgeBorder: 'rgba(59, 130, 246, 0.4)',
+    badgeBorder: 'rgba(59, 130, 246, 0.42)',
   },
   'Frontend Development': {
     id: 'Frontend Development',
@@ -78,7 +88,7 @@ export const GLOBE_CATEGORY_VISUALS: Record<
     glowHex: '#22D3EE',
     badgeBg: 'rgba(6, 182, 212, 0.16)',
     badgeText: '#67E8F9',
-    badgeBorder: 'rgba(6, 182, 212, 0.4)',
+    badgeBorder: 'rgba(6, 182, 212, 0.42)',
   },
   'Backend Development': {
     id: 'Backend Development',
@@ -87,43 +97,43 @@ export const GLOBE_CATEGORY_VISUALS: Record<
     glowHex: '#818CF8',
     badgeBg: 'rgba(99, 102, 241, 0.16)',
     badgeText: '#A5B4FC',
-    badgeBorder: 'rgba(99, 102, 241, 0.4)',
+    badgeBorder: 'rgba(99, 102, 241, 0.42)',
   },
   Databases: {
     id: 'Databases',
     shortLabel: 'Databases',
-    accentHex: '#F59E0B',
-    glowHex: '#FBBF24',
-    badgeBg: 'rgba(245, 158, 11, 0.16)',
-    badgeText: '#FCD34D',
-    badgeBorder: 'rgba(245, 158, 11, 0.4)',
+    accentHex: '#38BDF8',
+    glowHex: '#7DD3FC',
+    badgeBg: 'rgba(56, 189, 248, 0.16)',
+    badgeText: '#BAE6FD',
+    badgeBorder: 'rgba(56, 189, 248, 0.42)',
   },
   'AI Integration & APIs': {
     id: 'AI Integration & APIs',
     shortLabel: 'AI & APIs',
-    accentHex: '#A855F7',
-    glowHex: '#C084FC',
-    badgeBg: 'rgba(168, 85, 247, 0.16)',
-    badgeText: '#D8B4FE',
-    badgeBorder: 'rgba(168, 85, 247, 0.4)',
+    accentHex: '#8B5CF6',
+    glowHex: '#A78BFA',
+    badgeBg: 'rgba(139, 92, 246, 0.16)',
+    badgeText: '#DDD6FE',
+    badgeBorder: 'rgba(139, 92, 246, 0.42)',
   },
   'Core CS Concepts': {
     id: 'Core CS Concepts',
     shortLabel: 'Core CS',
-    accentHex: '#10B981',
-    glowHex: '#34D399',
-    badgeBg: 'rgba(16, 185, 129, 0.16)',
-    badgeText: '#6EE7B7',
-    badgeBorder: 'rgba(16, 185, 129, 0.4)',
+    accentHex: '#2DD4BF',
+    glowHex: '#5EEAD4',
+    badgeBg: 'rgba(45, 212, 191, 0.15)',
+    badgeText: '#99F6E4',
+    badgeBorder: 'rgba(45, 212, 191, 0.4)',
   },
   'Tools & Platforms': {
     id: 'Tools & Platforms',
     shortLabel: 'Tools',
-    accentHex: '#F43F5E',
-    glowHex: '#FB7185',
-    badgeBg: 'rgba(244, 63, 94, 0.16)',
-    badgeText: '#FDA4AF',
-    badgeBorder: 'rgba(244, 63, 94, 0.4)',
+    accentHex: '#A855F7',
+    glowHex: '#C084FC',
+    badgeBg: 'rgba(168, 85, 247, 0.16)',
+    badgeText: '#E9D5FF',
+    badgeBorder: 'rgba(168, 85, 247, 0.42)',
   },
 };
 
@@ -131,14 +141,31 @@ const COMPACT_LABELS: Record<string, string> = {
   'Data Structures & Algorithms': 'DSA',
   'Object-Oriented Programming (OOP)': 'OOP',
   'Database Management Systems (DBMS)': 'DBMS',
-  'Operating Systems (OS)': 'OS',
+  'Operating Systems (OS)': 'Operating Systems',
   'JWT Authentication': 'JWT Auth',
   'Session Management': 'Sessions',
   'AI Evaluation Workflows': 'AI Workflows',
   'MySQL Workbench': 'MySQL WB',
   'Cloudflare Pages': 'Cloudflare',
-  'Problem Solving': 'Problem Solving',
 };
+
+const CORE_ANCHOR_SKILLS = new Set([
+  'React.js',
+  'TypeScript',
+  'JavaScript',
+  'Java',
+  'Node.js',
+  'Express.js',
+  'PostgreSQL',
+  'SQL',
+  'HTML5',
+  'CSS3',
+  'Tailwind CSS',
+  'Git & GitHub',
+  'Data Structures & Algorithms',
+  'Gemini API',
+  'OpenAI API',
+]);
 
 export function createSkillSlug(name: string): string {
   return name
@@ -151,10 +178,23 @@ export function getCompactSkillLabel(name: string): string {
   return COMPACT_LABELS[name] ?? name;
 }
 
+export function classifySkillProminence(
+  skill: SkillCategory['skills'][number]
+): { prominence: SkillProminence; visualWeight: number } {
+  const isPrimary =
+    CORE_ANCHOR_SKILLS.has(skill.name) ||
+    Boolean(skill.level) ||
+    (skill.inProjects?.length ?? 0) >= 2;
+
+  return isPrimary
+    ? { prominence: 'primary', visualWeight: 1.18 }
+    : { prominence: 'supporting', visualWeight: 0.9 };
+}
+
 /**
- * Generates evenly distributed unit vectors on a sphere using the Golden-Angle
- * Fibonacci spiral, clamped slightly away from the exact +/-Y poles so labels
- * never bunch at the polar axis hubs.
+ * Generates evenly distributed unit vectors across a full 3D sphere using the
+ * Golden-Angle Fibonacci spiral so technologies themselves trace a crisp
+ * spherical silhouette from every viewing angle.
  */
 export function computeFibonacciSpherePoint(
   index: number,
@@ -162,9 +202,9 @@ export function computeFibonacciSpherePoint(
 ): [number, number, number] {
   if (total <= 1) return [0, 0, 1];
   const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-  // Spread y in [-0.84, 0.84] to leave clean room for north/south polar rings
-  const t = total === 1 ? 0.5 : index / (total - 1);
-  const y = 0.84 - t * 1.68;
+  // Distribute smoothly across [-0.90, 0.90] so top & bottom poles also carry nodes
+  const t = (index + 0.5) / total;
+  const y = 0.9 - t * 1.8;
   const ringRadius = Math.sqrt(Math.max(0, 1 - y * y));
   const theta = goldenAngle * index;
   const x = Math.cos(theta) * ringRadius;
@@ -183,13 +223,13 @@ export function unitVectorToLatLon(
 }
 
 /**
- * Interleaves skills across categories in round-robin order before assigning
- * Fibonacci coordinates so every hemisphere of the globe shows a balanced mix
- * of Languages, Frontend, Backend, Databases, AI, Core CS, and Tools.
+ * Interleaves all exact skills from PORTFOLIO_DATA across categories before
+ * mapping onto spherical coordinates so every view angle shows a balanced mix
+ * of prominent and supporting technologies.
  */
 export function buildGlobeSkillNodes(
   categories: SkillCategory[] = PORTFOLIO_DATA.skillCategories,
-  globeRadius = 2.25
+  globeRadius = 2.42
 ): GlobeSkillNode[] {
   const queues = categories.map((cat) =>
     cat.skills.map((skill) => ({
@@ -223,6 +263,7 @@ export function buildGlobeSkillNodes(
       GLOBE_CATEGORY_VISUALS[categoryKey] ?? GLOBE_CATEGORY_VISUALS.Languages;
     const unitPos = computeFibonacciSpherePoint(idx, total);
     const { latDeg, lonDeg } = unitVectorToLatLon(unitPos);
+    const { prominence, visualWeight } = classifySkillProminence(skill);
 
     return {
       id: createSkillSlug(skill.name),
@@ -233,6 +274,8 @@ export function buildGlobeSkillNodes(
       categoryDescription: cat.description,
       level: skill.level,
       inProjects: skill.inProjects ? [...skill.inProjects] : [],
+      prominence,
+      visualWeight,
       accentHex: visual.accentHex,
       glowHex: visual.glowHex,
       unitPos,
@@ -248,13 +291,62 @@ export function buildGlobeSkillNodes(
 }
 
 /**
- * Generates clean constellation arcs linking skills that share the same
- * engineering category (nearest neighbors in 3D space so arcs stay graceful
- * rather than cutting wildly across the globe).
+ * Builds the interconnected geodesic spherical network directly between the
+ * skill nodes themselves:
+ *  - 'structural' edges link every technology to its k nearest neighbors in 3D
+ *    space, constructing a genuine hollow geodesic sphere silhouette.
+ *  - 'discipline' edges link nearest peers within the same engineering category.
  */
-export function buildCategoryConnectionArcs(
-  nodes: GlobeSkillNode[]
-): GlobeConnectionArc[] {
+export function buildSphericalMeshConnections(
+  nodes: GlobeSkillNode[],
+  neighborsPerNode = 3
+): GlobeConnectionEdge[] {
+  const edges: GlobeConnectionEdge[] = [];
+  const seenPairs = new Set<string>();
+
+  const addEdge = (
+    a: GlobeSkillNode,
+    b: GlobeSkillNode,
+    kind: 'structural' | 'discipline'
+  ) => {
+    const pairKey = a.id < b.id ? `${a.id}::${b.id}` : `${b.id}::${a.id}`;
+    if (seenPairs.has(pairKey)) return;
+    seenPairs.add(pairKey);
+    edges.push({
+      id: pairKey,
+      fromId: a.id,
+      toId: b.id,
+      kind,
+      category: a.category,
+      accentHex: kind === 'discipline' ? a.accentHex : '#60A5FA',
+    });
+  };
+
+  // 1. Geodesic k-nearest-neighbor structural triangulation across all skills
+  for (let i = 0; i < nodes.length; i += 1) {
+    const a = nodes[i];
+    const ranked: { node: GlobeSkillNode; distSq: number }[] = [];
+    for (let j = 0; j < nodes.length; j += 1) {
+      if (i === j) continue;
+      const b = nodes[j];
+      const dx = a.unitPos[0] - b.unitPos[0];
+      const dy = a.unitPos[1] - b.unitPos[1];
+      const dz = a.unitPos[2] - b.unitPos[2];
+      ranked.push({ node: b, distSq: dx * dx + dy * dy + dz * dz });
+    }
+    ranked.sort((p, q) => p.distSq - q.distSq);
+    const limit = Math.min(neighborsPerNode, ranked.length);
+    for (let k = 0; k < limit; k += 1) {
+      const target = ranked[k].node;
+      addEdge(
+        a,
+        target,
+        a.category === target.category ? 'discipline' : 'structural'
+      );
+    }
+  }
+
+  // 2. Ensure every skill also has at least one same-category peer link
   const byCategory = new Map<Exclude<GlobeCategoryId, 'All'>, GlobeSkillNode[]>();
   for (const node of nodes) {
     const list = byCategory.get(node.category) ?? [];
@@ -262,15 +354,11 @@ export function buildCategoryConnectionArcs(
     byCategory.set(node.category, list);
   }
 
-  const arcs: GlobeConnectionArc[] = [];
-  const seenPairs = new Set<string>();
-
-  for (const [category, group] of byCategory.entries()) {
+  for (const group of byCategory.values()) {
     if (group.length < 2) continue;
     for (let i = 0; i < group.length; i += 1) {
       const a = group[i];
-      // Connect each node to its closest peer within the same category
-      let bestIdx = -1;
+      let best: GlobeSkillNode | null = null;
       let bestDistSq = Infinity;
       for (let j = 0; j < group.length; j += 1) {
         if (i === j) continue;
@@ -281,59 +369,73 @@ export function buildCategoryConnectionArcs(
         const dSq = dx * dx + dy * dy + dz * dz;
         if (dSq < bestDistSq) {
           bestDistSq = dSq;
-          bestIdx = j;
+          best = b;
         }
       }
-      if (bestIdx >= 0) {
-        const b = group[bestIdx];
-        const pairKey = a.id < b.id ? `${a.id}::${b.id}` : `${b.id}::${a.id}`;
-        if (!seenPairs.has(pairKey)) {
-          seenPairs.add(pairKey);
-          arcs.push({
-            id: pairKey,
-            fromId: a.id,
-            toId: b.id,
-            category,
-            accentHex: a.accentHex,
-          });
-        }
-      }
+      if (best) addEdge(a, best, 'discipline');
     }
   }
 
-  return arcs;
+  return edges;
 }
 
 /**
- * Computes front/back hemisphere opacity, depth scale, and raycast eligibility
- * from the dot product of the node's world-space surface normal and the
- * normalized vector pointing toward the camera.
+ * Returns the list of connected neighboring skills directly linked to a given
+ * skill node on the spherical web.
+ */
+export function getConnectedSkillNeighbors(
+  skillId: string,
+  nodes: GlobeSkillNode[],
+  edges: GlobeConnectionEdge[]
+): GlobeSkillNode[] {
+  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+  const result: GlobeSkillNode[] = [];
+  const seen = new Set<string>();
+  for (const edge of edges) {
+    let peerId: string | null = null;
+    if (edge.fromId === skillId) peerId = edge.toId;
+    else if (edge.toId === skillId) peerId = edge.fromId;
+    if (peerId && !seen.has(peerId)) {
+      seen.add(peerId);
+      const peer = nodeMap.get(peerId);
+      if (peer) result.push(peer);
+    }
+  }
+  return result;
+}
+
+/**
+ * Computes front/back hemisphere opacity, perspective scale, and picking
+ * eligibility for a hollow skill-constructed sphere (no opaque planet core).
+ * Front-facing nodes shine crisply; back-facing nodes softly recede into depth.
  */
 export function computeNodeDepthMetrics(
   facingDot: number,
   isHighlighted: boolean,
-  isDimmedByFilter: boolean
+  isDimmedByFilter: boolean,
+  visualWeight = 1.0
 ): NodeDepthMetrics {
-  const interactive = facingDot > -0.06;
+  const interactive = facingDot > -0.08;
 
-  // Smooth hermite transition across the planet's limb (-0.28 -> +0.28)
-  const t = Math.max(0, Math.min(1, (facingDot + 0.28) / 0.56));
+  // Smooth depth falloff from front hemisphere (+0.45) to back hemisphere (-0.45)
+  const t = Math.max(0, Math.min(1, (facingDot + 0.42) / 0.84));
   const smooth = t * t * (3 - 2 * t);
 
-  let opacity = 0.1 + smooth * 0.9;
+  let opacity = 0.12 + smooth * 0.88;
   if (isDimmedByFilter) {
-    opacity *= 0.22;
+    opacity *= 0.2;
   }
   if (isHighlighted) {
-    opacity = Math.max(opacity, 0.96);
+    opacity = 1;
   }
 
-  const baseScale = 0.72 + smooth * 0.28;
+  // Depth-attenuated scale multiplied by technology prominence weight
+  const depthScale = (0.64 + smooth * 0.36) * visualWeight;
   const scaleFactor = isHighlighted
-    ? baseScale * 1.24
+    ? depthScale * 1.24
     : isDimmedByFilter
-      ? baseScale * 0.84
-      : baseScale;
+      ? depthScale * 0.84
+      : depthScale;
 
   return {
     opacity: Number(opacity.toFixed(3)),
@@ -343,18 +445,16 @@ export function computeNodeDepthMetrics(
 }
 
 /**
- * Computes the target globe Euler (rotX, rotY) that brings a skill node's
- * local unit position directly toward the viewer (+Z axis).
+ * Computes target globe Euler (rotX, rotY) that rotates a skill's spherical
+ * coordinate directly to face the viewer (+Z axis).
  */
 export function computeTargetRotationForNode(
   unitPos: [number, number, number]
 ): { rotX: number; rotY: number } {
   const [x, y, z] = unitPos;
-  // Rotating around Y by -atan2(x, z) brings (x, z) onto +Z
   const rotY = -Math.atan2(x, z);
   const horiz = Math.sqrt(x * x + z * z);
-  // Tilting around X brings y toward the equatorial center (+Z)
-  const rotX = Math.max(-0.95, Math.min(0.95, Math.atan2(y, horiz)));
+  const rotX = Math.max(-0.85, Math.min(0.85, Math.atan2(y, horiz)));
   return { rotX, rotY };
 }
 
