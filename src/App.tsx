@@ -9,6 +9,7 @@ import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { About } from './components/About';
 import { Skills } from './components/Skills';
+import { TechUniverseSection } from './components/TechUniverseSection';
 import { Projects } from './components/Projects';
 import { Achievements } from './components/Achievements';
 import { Education } from './components/Education';
@@ -60,6 +61,9 @@ export default function App() {
 
         {/* Section 2: Technical Skills Landmark */}
         <Skills />
+
+        {/* Section 2B: Interactive 3D Technology Globe */}
+        <TechUniverseSection />
 
         {/* Section 3: Featured Projects Landmark */}
         <Projects />

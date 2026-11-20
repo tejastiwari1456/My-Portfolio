@@ -3,6 +3,7 @@ import { motion, useScroll, useTransform } from 'motion/react';
 import { PORTFOLIO_DATA, Project } from '../data/portfolioData';
 import { SimLabVisual, AIInterviewVisual } from './ProjectVisuals';
 import { ProjectDetailModal } from './ProjectDetailModal';
+import { ProjectWallet } from './wallet/ProjectWallet';
 import { Info, Github, CheckCircle2, Sparkles } from 'lucide-react';
 import { APPLE_EASE } from './motion/MotionWrappers';
 
@@ -126,7 +127,7 @@ const FeaturedProjectCard: React.FC<FeaturedCardProps> = ({
               <button
                 type="button"
                 onClick={() => onSelect(project)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 cursor-pointer whitespace-nowrap shrink-0"
                 aria-label={`View full details for ${project.name}`}
               >
                 <Info className="w-3.5 h-3.5" />
@@ -138,7 +139,7 @@ const FeaturedProjectCard: React.FC<FeaturedCardProps> = ({
                   href={project.githubUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-colors whitespace-nowrap shrink-0"
                 >
                   <Github className="w-3.5 h-3.5" />
                   <span>GitHub Repo</span>
@@ -171,7 +172,7 @@ const FeaturedProjectCard: React.FC<FeaturedCardProps> = ({
 
 export const Projects: React.FC = () => {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const { featuredProjects } = PORTFOLIO_DATA;
+  const { featuredProjects, miniProjects } = PORTFOLIO_DATA;
 
   const renderProjectVisual = (projectId: string) => {
     switch (projectId) {
@@ -202,9 +203,10 @@ export const Projects: React.FC = () => {
               </h2>
             </div>
 
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 shadow-2xs self-start sm:self-auto">
-              <span className="w-2 h-2 rounded-full bg-blue-600" />
-              <span>{featuredProjects.length} Featured Full-Stack Projects</span>
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 tabular-nums self-start sm:self-auto">
+              <span className="text-slate-900">{featuredProjects.length} Featured Systems</span>
+              <span aria-hidden="true" className="text-slate-300">·</span>
+              <span>{miniProjects.length} Wallet Cards</span>
             </div>
           </div>
         </div>
@@ -222,7 +224,34 @@ export const Projects: React.FC = () => {
           ))}
         </div>
 
-        {/* Project Technical Detail Modal */}
+        {/* Interactive Wallet-Inspired Mini Projects & Games Experience */}
+        {miniProjects.length > 0 && (
+          <div className="mt-20 pt-16 border-t border-slate-200/90 scroll-mt-24" id="mini-projects">
+            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-12">
+              <div className="max-w-2xl">
+                <div className="text-xs font-semibold text-blue-600 mb-1.5">
+                  Interactive Project Wallet · Mini Projects &amp; Games
+                </div>
+                <h3 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 text-balance">
+                  Pick a Card to Unfold the Build
+                </h3>
+                <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+                  Explore five frontend builds stored inside an interactive digital wallet. Hover over any card to lift it out for a quick preview, or click to unfold the wallet for architecture notes, tech stack details, and a live interactive demo.
+                </p>
+              </div>
+
+              <div className="text-xs text-slate-500 font-medium tabular-nums shrink-0">
+                <span>5 Collectible Project Cards</span>
+                <span aria-hidden="true" className="mx-2 text-slate-300">·</span>
+                <span>Arrow keys &amp; Esc supported</span>
+              </div>
+            </div>
+
+            <ProjectWallet projects={miniProjects} />
+          </div>
+        )}
+
+        {/* Project Technical Detail Modal (for Featured Systems) */}
         <ProjectDetailModal
           project={selectedProject}
           onClose={() => setSelectedProject(null)}
@@ -231,3 +260,4 @@ export const Projects: React.FC = () => {
     </section>
   );
 };
+

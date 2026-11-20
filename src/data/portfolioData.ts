@@ -316,7 +316,163 @@ export const PORTFOLIO_DATA: PortfolioData = {
     }
   ],
 
-  miniProjects: [],
+  miniProjects: [
+    {
+      id: "youtube-clone",
+      name: "YouTube Clone",
+      category: "Frontend UI | Video Interface",
+      shortDescription:
+        "A frontend web application inspired by YouTube, featuring a familiar video-sharing interface. Built to strengthen frontend development skills, UI structuring, component-based architecture, and responsive web design.",
+      fullDescription:
+        "A frontend web application inspired by YouTube, featuring a familiar video-sharing interface with structured media grids, category navigation, and an adaptable player layout. Built to strengthen frontend development skills, UI structuring, component-based architecture, and responsive web design across desktop and mobile screens.",
+      features: [
+        "Structured video-sharing layout with responsive thumbnail grids, channel metadata, and interactive category filtering.",
+        "Component-based UI architecture separating header navigation, category filter bar, and video preview cards.",
+        "Responsive layout rules that adapt cleanly across desktop, tablet, and mobile viewports.",
+        "Clean visual hierarchy modeled after modern video streaming interfaces for effortless content scanning."
+      ],
+      techStack: [
+        "HTML5",
+        "CSS3",
+        "JavaScript",
+        "Component Architecture",
+        "Responsive Design"
+      ],
+      featured: false,
+      statusText: "Frontend UI",
+      highlights: [
+        "Familiar video-sharing grid & player hierarchy",
+        "Component-based UI structuring",
+        "Responsive across screen sizes"
+      ],
+      architectureNotes:
+        "Modular frontend interface organized around reusable navigation, category filter, and media card components with fluid CSS grid layouts and responsive breakpoints."
+    },
+    {
+      id: "amazon-clone",
+      name: "Amazon Clone",
+      category: "E-Commerce | React & Vite",
+      shortDescription:
+        "A React-based e-commerce frontend inspired by Amazon, replicating the look and feel of an online shopping platform. Focuses on reusable components, product presentation, and modern frontend development using React and Vite.",
+      fullDescription:
+        "A React-based e-commerce frontend inspired by Amazon, replicating the look and feel of a full online shopping platform. Engineered with Vite for fast builds and focused on reusable UI components, clear product presentation, pricing/rating cards, and interactive shopping cart state management.",
+      features: [
+        "Reusable React product card components displaying pricing, ratings, categories, and quick add-to-cart actions.",
+        "Replicated e-commerce storefront structure with product showcase rows and dynamic cart item counting.",
+        "Fast development and optimized bundling workflow powered by React and Vite.",
+        "Clean state synchronization between catalog actions and live cart totals."
+      ],
+      techStack: [
+        "React",
+        "Vite",
+        "JavaScript",
+        "CSS3",
+        "Reusable Components"
+      ],
+      featured: false,
+      statusText: "React & Vite",
+      highlights: [
+        "Reusable React storefront components",
+        "Structured product presentation & ratings",
+        "Interactive cart quantity & subtotal state"
+      ],
+      architectureNotes:
+        "React + Vite component tree separating catalog data, reusable product presentation cards, and centralized cart state calculations."
+    },
+    {
+      id: "todo-list-app",
+      name: "To-Do List Application",
+      category: "Productivity | JavaScript & DOM",
+      shortDescription:
+        "A task management application that allows users to create, organize, and manage daily tasks. Demonstrates JavaScript fundamentals, DOM interactions, state management, and practical application development.",
+      fullDescription:
+        "A practical task management application that allows users to create, organize, complete, and remove daily tasks smoothly. Built to demonstrate core JavaScript fundamentals, responsive DOM interactions, predictable state management, and clean everyday usability.",
+      features: [
+        "Instant task creation with input validation to prevent blank entries.",
+        "One-click completion toggling and task deletion with immediate UI updates.",
+        "Live active vs. completed task tracking for clear daily organization.",
+        "Demonstrates event handling, DOM manipulation, and clean state transitions."
+      ],
+      techStack: [
+        "JavaScript",
+        "HTML5",
+        "CSS3",
+        "DOM Manipulation",
+        "State Management"
+      ],
+      featured: false,
+      statusText: "JS Fundamentals",
+      highlights: [
+        "Create, complete, and delete daily tasks",
+        "Clean DOM interaction & event handling",
+        "Predictable task state management"
+      ],
+      architectureNotes:
+        "Pure state transitions for adding, toggling, and deleting task items paired with immediate DOM synchronization and accessible form controls."
+    },
+    {
+      id: "rock-paper-scissors",
+      name: "Rock Paper Scissors",
+      category: "Interactive Game | JavaScript Logic",
+      shortDescription:
+        "An interactive browser-based implementation of the classic Rock Paper Scissors game. Allows users to compete against the computer through real-time choices and game logic, demonstrating JavaScript fundamentals, conditional logic, and event handling.",
+      fullDescription:
+        "An interactive browser-based implementation of the classic Rock Paper Scissors game where players compete head-to-head against the computer in real time. Highlights JavaScript fundamentals, randomized opponent selection, conditional win/loss/draw evaluation, live score tracking, and responsive event handling.",
+      features: [
+        "Real-time player vs. computer gameplay with instant round evaluation.",
+        "Clean conditional game logic handling all win, loss, and draw match-ups accurately.",
+        "Live scoreboard tracking player wins, computer wins, and draws with one-click reset.",
+        "Responsive button interactions and clear visual feedback after every move."
+      ],
+      techStack: [
+        "JavaScript",
+        "HTML5",
+        "CSS3",
+        "Game Logic",
+        "Event Handling"
+      ],
+      featured: false,
+      statusText: "Interactive Game",
+      highlights: [
+        "Real-time player vs. computer rounds",
+        "Conditional win/loss/draw evaluation",
+        "Live scoreboard & instant reset"
+      ],
+      architectureNotes:
+        "Deterministic round resolver comparing player and randomized CPU moves, driving live score state and immediate visual feedback on each click event."
+    },
+    {
+      id: "chatbot-application",
+      name: "Chatbot Application",
+      category: "Conversational UI | React & Vite",
+      shortDescription:
+        "A chatbot interface built using React and Vite, providing an interactive conversational experience. Demonstrates component-based development, user interaction handling, and the fundamentals of building chatbot-based web interfaces.",
+      fullDescription:
+        "An interactive conversational chatbot interface engineered using React and Vite. Focuses on component-based frontend development, smooth message stream rendering, user input handling, quick-prompt interactions, and the foundational patterns behind modern web chatbot UIs.",
+      features: [
+        "Interactive conversational message stream distinguishing user prompts and bot responses clearly.",
+        "Real-time form submission and quick-prompt chips for smooth user interaction.",
+        "Modular React component design built with Vite for fast, responsive updates.",
+        "Foundational conversational UI patterns including message history state and scroll containment."
+      ],
+      techStack: [
+        "React",
+        "Vite",
+        "JavaScript",
+        "Conversational UI",
+        "Component Architecture"
+      ],
+      featured: false,
+      statusText: "React & Vite",
+      highlights: [
+        "Interactive conversational message stream",
+        "Component-based React + Vite setup",
+        "Prompt handling & instant bot replies"
+      ],
+      architectureNotes:
+        "Component-driven React + Vite interface managing an ordered conversation state array, controlled text input, and responsive message handlers."
+    }
+  ],
 
   certifications: [
     {
